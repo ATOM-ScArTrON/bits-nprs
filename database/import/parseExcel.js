@@ -4,7 +4,7 @@ import { query } from '../config/db';
 
 export async function parseAndInsertExcel(filePath: string) {
   try {
-    console.log(`📄 Reading Excel file: ${filePath}`);
+    console.log(` Reading Excel file: ${filePath}`);
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
@@ -14,10 +14,10 @@ export async function parseAndInsertExcel(filePath: string) {
     const workbook = XLSX.read(fs.readFileSync(filePath), { type: 'buffer' });
 
     // Debug: List all available sheets
-    console.log('📋 Available sheets in Excel file:', workbook.SheetNames);
+    console.log(' Available sheets in Excel file:', workbook.SheetNames);
 
     /** -------------------- PRS Sheet: BerthDetails -------------------- **/
-    console.log('📊 Processing PRS sheet...');
+    console.log(' Processing PRS sheet...');
     const prsSheet = workbook.Sheets['PRS'];
     
     if (!prsSheet) {
@@ -56,7 +56,7 @@ export async function parseAndInsertExcel(filePath: string) {
     }
 
     /** -------------------- MDMS Sheet: CoachLayouts -------------------- **/
-    console.log('📊 Processing MDMS sheet...');
+    console.log(' Processing MDMS sheet...');
     const mdmsSheet = workbook.Sheets['MDMS'];
     
     if (!mdmsSheet) {
@@ -102,9 +102,9 @@ export async function parseAndInsertExcel(filePath: string) {
       }
     }
 
-    console.log('✅ PRS and MDMS data inserted successfully.');
+    console.log(' PRS and MDMS data inserted successfully.');
   } catch (error) {
-    console.error('❌ Failed to parse and insert Excel data:', error);
+    console.error(' Failed to parse and insert Excel data:', error);
     throw error;
   }
 }
