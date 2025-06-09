@@ -16,7 +16,7 @@ export async function parseAndInsertExcel(filePath: string) {
     // Debug: List all available sheets
     console.log(' Available sheets in Excel file:', workbook.SheetNames);
 
-    /** -------------------- PRS Sheet: BerthDetails -------------------- **/
+    /** PRS Sheet: BerthDetails**/
     console.log(' Processing PRS sheet...');
     const prsSheet = workbook.Sheets['PRS'];
     
@@ -55,7 +55,7 @@ export async function parseAndInsertExcel(filePath: string) {
       }
     }
 
-    /** -------------------- MDMS Sheet: CoachLayouts -------------------- **/
+    /** MDMS Sheet: CoachLayouts **/
     console.log(' Processing MDMS sheet...');
     const mdmsSheet = workbook.Sheets['MDMS'];
     
