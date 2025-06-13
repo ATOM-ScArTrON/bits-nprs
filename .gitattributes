@@ -1,0 +1,21 @@
+# Ensure consistent LF line endings for all text files
+* text=auto eol=lf
+
+# Explicit line endings for specific file types
+*.js     text eol=lf
+*.ts     text eol=lf
+*.json   text eol=lf
+*.sql    text eol=lf
+*.md     text eol=lf
+*.sh     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.env    text eol=lf
+
+# Treat these as binary (don't convert line endings)
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.pdf    binary
