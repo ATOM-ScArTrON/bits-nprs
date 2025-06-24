@@ -2,8 +2,8 @@ CREATE TABLE prs (
   trnno INTEGER,
   islno INTEGER,
   stn_code TEXT,
-  arrv_time TEXT, -- Use TIME if data is properly formatted
-  dept_time TEXT, -- Same as above
+  arrv_time TEXT,
+  dept_time TEXT, 
   route INTEGER,
   cummulative_distance NUMERIC,
   stn_status_flag INTEGER,
