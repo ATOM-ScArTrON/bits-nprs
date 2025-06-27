@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS berths (
+CREATE TABLE IF NOT EXISTS prs (
   id SERIAL PRIMARY KEY,
   serial_no INT,
   coach_code TEXT,
@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS berths (
 );
 
 
-CREATE TABLE IF NOT EXISTS coach_layouts (
+CREATE TABLE IF NOT EXISTS mdms (
   id SERIAL PRIMARY KEY,
   serial_no INT,
   layout_variant_no TEXT,
