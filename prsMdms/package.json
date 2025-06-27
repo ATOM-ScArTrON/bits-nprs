@@ -20,6 +20,7 @@
   "homepage": "https://github.com/ATOM-ScArTrON/bits-nprs#readme",
   "description": "",
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.6.0",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
