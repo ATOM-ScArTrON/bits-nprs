@@ -1,0 +1,28 @@
+{
+  "name": "prsmdms",
+  "version": "1.0.0",
+  "main": "appPrsMdms.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "seed": "node database/ingestion/prsMdmsDataSeeder.js",
+    "start": "node backend/appPrsMdms.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ATOM-ScArTrON/bits-nprs.git"
+  },
+  "author": "Divit Setia",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ATOM-ScArTrON/bits-nprs/issues"
+  },
+  "homepage": "https://github.com/ATOM-ScArTrON/bits-nprs#readme",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^16.6.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "pg": "^8.16.2"
+  }
+}
