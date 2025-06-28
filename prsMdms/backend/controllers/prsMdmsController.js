@@ -1,5 +1,7 @@
 import { DiscrepancyService } from '../services/prsMdms.js';
 import { SimulationService } from '../services/simulateChangesPrsMdms.js';
+import fs from 'fs';
+import path from 'path';
 
 const discrepancyService = new DiscrepancyService();
 const simulationService = new SimulationService();
@@ -206,3 +208,74 @@ export const restoreData = async (req, res) => {
     });
   }
 }; // ← ADDED MISSING CLOSING BRACE
+
+/**
+ * Download the generated excel file
+ */
+export const downloadExcel = async (req, res) => {
+  try {
+    const { fileName } = req.params;
+    
+    // Validate filename to prevent path traversal attacks
+    if (!fileName || !/^[\w\-. ]+\.xlsx$/.test(fileName)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid filename',
+        message: 'Filename must be a valid Excel file'
+      });
+    }
+
+    // Construct file path (same as where exportToExcel saves files)
+    const filePath = path.join(process.cwd(), 'exports', fileName);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        error: 'File not found',
+        message: 'The requested Excel file does not exist or has expired'
+      });
+    }
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    // Stream the file to client
+    const fileStream = fs.createReadStream(filePath);
+    
+    fileStream.on('error', (error) => {
+      console.error('Error streaming file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: 'Failed to download file',
+          message: error.message
+        });
+      }
+    });
+
+    fileStream.pipe(res);
+
+    // Optional: Delete file after download (uncomment if you want auto-cleanup)
+    fileStream.on('end', () => {
+      setTimeout(() => {
+        fs.unlink(filePath, (err) => {
+          if (err) console.error('Error deleting file:', err);
+          else console.log(`🗑️ Cleaned up file: ${fileName}`);
+        });
+      }, 5000); // Delete after 5 seconds
+    });
+
+  } catch (error) {
+    console.error('Error downloading Excel file:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to download file',
+        message: error.message
+      });
+    }
+  }
+};

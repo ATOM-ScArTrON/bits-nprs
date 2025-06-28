@@ -7,7 +7,8 @@ import {
   getDiscrepanciesForCoachCode,
   exportToExcel,
   simulateChanges,
-  restoreData
+  restoreData,
+  downloadExcel
 } from '../controllers/prsMdmsController.js';
 
 const router = Router();
@@ -49,6 +50,9 @@ router.get('/type/:type', getDiscrepanciesByType);
 
 // Get discrepancies for a specific coach code
 router.get('/coach/:coachCode', getDiscrepanciesForCoachCode);
+
+// Download the generated excel file
+router.get('/download/:fileName', downloadExcel);
 
 // Simulation endpoints for testing
 router.post('/simulate', simulateChanges);
