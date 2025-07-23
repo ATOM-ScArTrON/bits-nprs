@@ -2,6 +2,29 @@ import ExcelJS from 'exceljs';
 import fs from 'fs';
 import { query } from '../config/db.js';
 
+// Utility function to clean text data
+function cleanTextData(value) {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  return value;
+}
+
+// Clean all text fields in a row
+function cleanRowData(row) {
+  const cleanedRow = {};
+  
+  Object.keys(row).forEach(key => {
+    if (typeof row[key] === 'string') {
+      cleanedRow[key] = row[key].trim();
+    } else {
+      cleanedRow[key] = row[key];
+    }
+  });
+  
+  return cleanedRow;
+}
+
 export async function parseAndInsertExcel(filePath) {
   try {
     console.log(`📖 Reading Excel file: ${filePath}`);
@@ -22,48 +45,48 @@ export async function parseAndInsertExcel(filePath) {
       await query('DELETE FROM prs');
       await query('DELETE FROM mdms');
 
-      // PRS Sheet Processing
-      console.log('📊 Processing PRS sheet...');
+      // PRS Sheet Processing with whitespace trimming
+      console.log('📊 Processing PRS sheet with whitespace cleanup...');
       const prsSheet = workbook.getWorksheet('PRS');
-      
       if (!prsSheet) {
         throw new Error('PRS sheet not found in Excel file');
       }
 
       const PRS = [];
-      
       prsSheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
         // Skip header row
         if (rowNumber === 1) {
-          console.log('📋 PRS Headers:', row.values.slice(1, 7)); // Only show actual data columns
+          console.log('📋 PRS Headers:', row.values.slice(1, 7));
           return;
         }
-        
+
         const rowValues = row.values;
         const serialNo = rowValues[1];
-        const coachCode = rowValues[2];
-        
+        const coachCode = cleanTextData(rowValues[2]); // Clean coach code
+
         // Skip rows where serial_no is not a number or contains header-like data
         if (!serialNo || isNaN(Number(serialNo)) || coachCode === 'Coach Code') {
           console.warn(`⚠️ Skipping invalid PRS row ${rowNumber}: serialNo=${serialNo}, coachCode=${coachCode}`);
           return;
         }
-        
-        // Only process columns 1-6 (ignore SQL query columns 7-8)
+
+        // Clean all text fields while processing
         PRS.push({
           'S. No.': rowValues[1],
-          'Coach Code': rowValues[2],
+          'Coach Code': cleanTextData(rowValues[2]),
           'Composite Flag': rowValues[3],
-          'Class': rowValues[4],
+          'Class': cleanTextData(rowValues[4]),
           'Berth Number': rowValues[5],
-          'Berth Type': rowValues[6],
+          'Berth Type': cleanTextData(rowValues[6]),
         });
       });
 
       console.log(`Found ${PRS.length} valid rows in PRS sheet`);
 
-      // Process PRS data
+      // Process PRS data with enhanced validation and cleaning
       for (const [index, row] of PRS.entries()) {
+        const cleanedRow = cleanRowData(row);
+        
         const {
           'S. No.': serialNo,
           'Coach Code': coachCode,
@@ -71,7 +94,7 @@ export async function parseAndInsertExcel(filePath) {
           'Class': cls,
           'Berth Number': berthNumber,
           'Berth Type': berthType,
-        } = row;
+        } = cleanedRow;
 
         // Enhanced validation
         if (!serialNo || !coachCode || isNaN(Number(serialNo))) {
@@ -88,36 +111,34 @@ export async function parseAndInsertExcel(filePath) {
            VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             validSerialNo,
-            coachCode,
+            coachCode, // Already cleaned
             parseBoolean(compositeFlag),
-            cls,
+            cls, // Already cleaned
             validBerthNumber,
-            berthType,
+            berthType, // Already cleaned
           ]
         );
-        
+
         if ((index + 1) % 100 === 0) {
-          console.log(`✅ Inserted ${index + 1} PRS records...`);
+          console.log(`✅ Inserted ${index + 1} clean PRS records...`);
         }
       }
 
-      // MDMS Sheet Processing
-      console.log('📊 Processing MDMS sheet...');
+      // MDMS Sheet Processing with whitespace trimming
+      console.log('📊 Processing MDMS sheet with whitespace cleanup...');
       const mdmsSheet = workbook.getWorksheet('MDMS');
-      
       if (!mdmsSheet) {
         throw new Error('MDMS sheet not found in Excel file');
       }
 
       const MDMS = [];
-      
       mdmsSheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
         // Skip header row
         if (rowNumber === 1) {
-          console.log('📋 MDMS Headers:', row.values.slice(1, 10)); // Only show actual data columns
+          console.log('📋 MDMS Headers:', row.values.slice(1, 10));
           return;
         }
-        
+
         const rowValues = row.values;
         const serialNo = rowValues[1];
         
@@ -126,25 +147,27 @@ export async function parseAndInsertExcel(filePath) {
           console.warn(`⚠️ Skipping invalid MDMS row ${rowNumber}: serialNo=${serialNo}`);
           return;
         }
-        
-        // Only process columns 1-9 (ignore SQL query columns 10-12)
+
+        // Clean all text fields while processing
         MDMS.push({
           'S. No.': rowValues[1],
-          'layout_variant_no': rowValues[2],
+          'layout_variant_no': cleanTextData(rowValues[2]),
           'composite_flag': rowValues[3],
-          'coach_class_first': rowValues[4],
-          'coach_class_second': rowValues[5],
-          'prs_coach_code': rowValues[6],
-          'coach_class': rowValues[7],
+          'coach_class_first': cleanTextData(rowValues[4]),
+          'coach_class_second': cleanTextData(rowValues[5]),
+          'prs_coach_code': cleanTextData(rowValues[6]),
+          'coach_class': cleanTextData(rowValues[7]),
           'berth_no': rowValues[8],
-          'berth_qualifier': rowValues[9],
+          'berth_qualifier': cleanTextData(rowValues[9]),
         });
       });
 
       console.log(`Found ${MDMS.length} valid rows in MDMS sheet`);
 
-      // Process MDMS data
+      // Process MDMS data with enhanced validation and cleaning
       for (const [index, row] of MDMS.entries()) {
+        const cleanedRow = cleanRowData(row);
+        
         const {
           'S. No.': serialNo,
           'layout_variant_no': layoutVariantNo,
@@ -155,7 +178,7 @@ export async function parseAndInsertExcel(filePath) {
           'coach_class': coachClass,
           'berth_no': berthNo,
           'berth_qualifier': berthQualifier,
-        } = row;
+        } = cleanedRow;
 
         // Validate required fields
         if (!serialNo || isNaN(Number(serialNo))) {
@@ -174,29 +197,31 @@ export async function parseAndInsertExcel(filePath) {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             validSerialNo,
-            layoutVariantNo,
+            layoutVariantNo, // Already cleaned
             parseBoolean(compositeFlag),
-            coachClassFirst,
-            coachClassSecond,
-            prsCoachCode,
-            coachClass,
+            coachClassFirst, // Already cleaned
+            coachClassSecond, // Already cleaned
+            prsCoachCode, // Already cleaned
+            coachClass, // Already cleaned
             validBerthNo,
-            berthQualifier,
+            berthQualifier, // Already cleaned
           ]
         );
-        
+
         if ((index + 1) % 100 === 0) {
-          console.log(`✅ Inserted ${index + 1} MDMS records...`);
+          console.log(`✅ Inserted ${index + 1} clean MDMS records...`);
         }
       }
 
       await query('COMMIT');
-      console.log('🎉 PRS and MDMS data inserted successfully.');
+
+      console.log('🎉 PRS and MDMS data inserted successfully with whitespace cleanup.');
       
       const prsCount = await query('SELECT COUNT(*) as count FROM prs');
       const mdmsCount = await query('SELECT COUNT(*) as count FROM mdms');
-      console.log(`📈 Summary: ${prsCount.rows[0].count} PRS records, ${mdmsCount.rows[0].count} MDMS records inserted.`);
       
+      console.log(`📈 Summary: ${prsCount.rows[0].count} PRS records, ${mdmsCount.rows[0].count} MDMS records inserted (all cleaned).`);
+
     } catch (error) {
       await query('ROLLBACK');
       throw error;

@@ -6,11 +6,187 @@ import fs from 'fs';
 export class DiscrepancyService {
 
   /**
+   * Generate SQL files for all discrepancy types
+   */
+  async generateDiscrepancySQL() {
+    try {
+      console.log('📝 Generating SQL files for discrepancies...');
+
+      const sqlQueries = {
+        typeMismatch: `
+-- Type Mismatch Discrepancies
+-- Records where berth type in PRS doesn't match berth qualifier in MDMS
+SELECT 
+  p.serial_no,
+  p.coach_code,
+  p.class as prs_class,
+  p.berth_number,
+  p.berth_type,
+  m.berth_qualifier,
+  m.coach_class as mdms_class,
+  'TYPE_MISMATCH' as discrepancy_type,
+  CONCAT('PRS berth type ''', p.berth_type, ''' doesn''t match MDMS berth qualifier ''', m.berth_qualifier, '''') as details
+FROM prs p
+INNER JOIN mdms m
+  ON TRIM(LOWER(p.coach_code)) = TRIM(LOWER(m.prs_coach_code))
+  AND TRIM(LOWER(p.class)) = TRIM(LOWER(m.coach_class))
+  AND p.berth_number::INT = m.berth_no
+WHERE p.berth_type != m.berth_qualifier
+ORDER BY p.coach_code, p.berth_number;
+`,
+
+        missingInMdms: `
+-- Missing in MDMS
+-- Records that exist in PRS but not in MDMS
+SELECT 
+  p.serial_no,
+  p.coach_code,
+  p.class as prs_class,
+  p.berth_number,
+  p.berth_type,
+  'N/A' as berth_qualifier,
+  'MISSING_IN_MDMS' as discrepancy_type,
+  CONCAT('PRS record (', p.coach_code, ', class ', p.class, ', berth ', p.berth_number, ') not found in MDMS') as details
+FROM prs p
+LEFT JOIN mdms m 
+  ON TRIM(LOWER(p.coach_code)) = TRIM(LOWER(m.prs_coach_code))
+  AND TRIM(LOWER(p.class)) = TRIM(LOWER(m.coach_class))
+  AND p.berth_number::INT = m.berth_no
+WHERE m.serial_no IS NULL
+ORDER BY p.coach_code, p.berth_number;
+`,
+
+        missingInPrs: `
+-- Missing in PRS
+-- Records that exist in MDMS but not in PRS
+SELECT 
+  m.serial_no,
+  m.prs_coach_code as coach_code,
+  m.coach_class as mdms_class,
+  m.berth_no as berth_number,
+  'N/A' as berth_type,
+  m.berth_qualifier,
+  'MISSING_IN_PRS' as discrepancy_type,
+  CONCAT('MDMS record (', m.prs_coach_code, ', class ', m.coach_class, ', berth ', m.berth_no, ') not found in PRS') as details
+FROM mdms m
+LEFT JOIN prs p 
+  ON TRIM(LOWER(m.prs_coach_code)) = TRIM(LOWER(p.coach_code))
+  AND TRIM(LOWER(m.coach_class)) = TRIM(LOWER(p.class))
+  AND m.berth_no = p.berth_number::INT
+WHERE p.serial_no IS NULL
+ORDER BY m.prs_coach_code, m.berth_no;
+`,
+
+        allDiscrepancies: `
+-- All Discrepancies Combined
+-- Union of all discrepancy types
+WITH type_mismatches AS (
+  SELECT 
+    p.serial_no,
+    p.coach_code,
+    p.class as prs_class,
+    m.coach_class as mdms_class,
+    p.berth_number,
+    p.berth_type,
+    m.berth_qualifier,
+    'TYPE_MISMATCH' as discrepancy_type,
+    CONCAT('PRS berth type ''', p.berth_type, ''' doesn''t match MDMS berth qualifier ''', m.berth_qualifier, '''') as details
+  FROM prs p
+  INNER JOIN mdms m
+    ON TRIM(LOWER(p.coach_code)) = TRIM(LOWER(m.prs_coach_code))
+    AND TRIM(LOWER(p.class)) = TRIM(LOWER(m.coach_class))
+    AND p.berth_number::INT = m.berth_no
+  WHERE p.berth_type != m.berth_qualifier
+),
+missing_in_mdms AS (
+  SELECT 
+    p.serial_no,
+    p.coach_code,
+    p.class as prs_class,
+    NULL as mdms_class,
+    p.berth_number,
+    p.berth_type,
+    'N/A' as berth_qualifier,
+    'MISSING_IN_MDMS' as discrepancy_type,
+    CONCAT('PRS record (', p.coach_code, ', class ', p.class, ', berth ', p.berth_number, ') not found in MDMS') as details
+  FROM prs p
+  LEFT JOIN mdms m 
+    ON TRIM(LOWER(p.coach_code)) = TRIM(LOWER(m.prs_coach_code))
+    AND TRIM(LOWER(p.class)) = TRIM(LOWER(m.coach_class))
+    AND p.berth_number::INT = m.berth_no
+  WHERE m.serial_no IS NULL
+),
+missing_in_prs AS (
+  SELECT 
+    m.serial_no,
+    m.prs_coach_code as coach_code,
+    NULL as prs_class,
+    m.coach_class as mdms_class,
+    m.berth_no as berth_number,
+    'N/A' as berth_type,
+    m.berth_qualifier,
+    'MISSING_IN_PRS' as discrepancy_type,
+    CONCAT('MDMS record (', m.prs_coach_code, ', class ', m.coach_class, ', berth ', m.berth_no, ') not found in PRS') as details
+  FROM mdms m
+  LEFT JOIN prs p 
+    ON TRIM(LOWER(m.prs_coach_code)) = TRIM(LOWER(p.coach_code))
+    AND TRIM(LOWER(m.coach_class)) = TRIM(LOWER(p.class))
+    AND m.berth_no = p.berth_number::INT
+  WHERE p.serial_no IS NULL
+)
+SELECT * FROM type_mismatches
+UNION ALL
+SELECT * FROM missing_in_mdms
+UNION ALL
+SELECT * FROM missing_in_prs
+ORDER BY discrepancy_type, coach_code, berth_number;
+`
+      };
+
+      const sqlDir = path.join(process.cwd(), 'sql_exports');
+      if (!fs.existsSync(sqlDir)) {
+        fs.mkdirSync(sqlDir, { recursive: true });
+      }
+
+      const timestamp = this.getTimestamp();
+      const sqlFiles = [];
+
+      for (const [type, sqlQuery] of Object.entries(sqlQueries)) {
+        const fileName = `discrepancy_${type}_${timestamp}.sql`;
+        const filePath = path.join(sqlDir, fileName);
+
+        fs.writeFileSync(filePath, sqlQuery.trim());
+        sqlFiles.push(fileName);
+        console.log(`✅ Created SQL file: ${fileName}`);
+      }
+
+      return sqlFiles;
+
+    } catch (error) {
+      console.error('Error generating discrepancy SQL files:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate timestamp for file naming
+   */
+  getTimestamp() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+  }
+
+
+  /**
    * Find all discrepancies between PRS and MDMS tables
    */
   async findDiscrepancies() {
     try {
       console.log('🔍 Starting improved discrepancy analysis...');
+
+      // Generate SQL files first
+      await this.generateDiscrepancySQL();
+
       const discrepancies = [];
 
       // Query 1: Type Mismatch
@@ -84,7 +260,7 @@ export class DiscrepancyService {
       const missingInPrsQuery = `
       SELECT 
         m.serial_no,
-        m.prs_coach_code AS coach_code,
+        p.coach_code,
         m.coach_class,
         m.berth_no AS berth_number,
         m.berth_qualifier
@@ -137,11 +313,24 @@ export class DiscrepancyService {
   }
 
   /**
-   * Get discrepancies for a specific coach code
-   */
+ * Get discrepancies for a specific coach code
+ */
   async getDiscrepanciesForCoachCode(coachCode) {
     const allDiscrepancies = await this.findDiscrepancies();
-    return allDiscrepancies.discrepancies.filter(d => d.coachCode === coachCode);
+
+    // Filter discrepancies for the specified coach code (case-insensitive)
+    const filteredDiscrepancies = allDiscrepancies.discrepancies.filter(d =>
+      d.coachCode && d.coachCode.toString().trim().toLowerCase() === coachCode.toString().trim().toLowerCase()
+    );
+
+    return {
+      coachCode: coachCode,
+      count: filteredDiscrepancies.length,
+      discrepancies: filteredDiscrepancies,
+      message: filteredDiscrepancies.length === 0
+        ? `No discrepancies found for coach code ${coachCode}`
+        : `Found ${filteredDiscrepancies.length} discrepancies for coach code ${coachCode}`
+    };
   }
 
   /**
@@ -199,8 +388,7 @@ export class DiscrepancyService {
 
   /**
    * Export discrepancies to Excel file
-   */
-  async exportDiscrepanciesToExcel(includeDetailedSummary = true) {
+   */  async exportDiscrepanciesToExcel(includeDetailedSummary = true) {
     try {
       console.log('📊 Generating Excel report...');
       const workbook = new ExcelJS.Workbook();
@@ -213,8 +401,6 @@ export class DiscrepancyService {
         { header: 'Value', key: 'value', width: 20 },
         { header: 'Percentage', key: 'percentage', width: 15 }
       ];
-
-      // Style the header row
       summarySheet.getRow(1).font = { bold: true };
       summarySheet.getRow(1).fill = {
         type: 'pattern',
@@ -240,8 +426,8 @@ export class DiscrepancyService {
       });
 
       // All Discrepancies Sheet
-      const allDiscrepanciesSheet = workbook.addWorksheet('All Discrepancies');
-      allDiscrepanciesSheet.columns = [
+      const allSheet = workbook.addWorksheet('All Discrepancies');
+      allSheet.columns = [
         { header: 'Serial No', key: 'serialNo', width: 12 },
         { header: 'Coach Code', key: 'coachCode', width: 15 },
         { header: 'PRS Coach Class', key: 'prsClass', width: 12 },
@@ -252,37 +438,101 @@ export class DiscrepancyService {
         { header: 'Discrepancy Type', key: 'discrepancyType', width: 20 },
         { header: 'Details', key: 'details', width: 60 }
       ];
+      allSheet.getRow(1).font = { bold: true };
+      allSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+      discrepancyData.discrepancies.forEach(d => allSheet.addRow(d));
 
-      // Style the header row
-      allDiscrepanciesSheet.getRow(1).font = { bold: true };
-      allDiscrepanciesSheet.getRow(1).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE0E0E0' }
-      };
+      // Sheet: Type Mismatches
+      const typeMismatchSheet = workbook.addWorksheet('Type Mismatches');
+      typeMismatchSheet.columns = [
+        { header: 'Serial No', key: 'serialNo', width: 12 },
+        { header: 'Coach Code', key: 'coachCode', width: 15 },
+        { header: 'PRS Class', key: 'prsClass', width: 12 },
+        { header: 'MDMS Class', key: 'mdmsClass', width: 12 },
+        { header: 'Berth Number', key: 'berthNumber', width: 12 },
+        { header: 'PRS Berth Type', key: 'berthType', width: 15 },
+        { header: 'MDMS Berth Qualifier', key: 'berthQualifier', width: 20 },
+        { header: 'Details', key: 'details', width: 60 }
+      ];
+      typeMismatchSheet.getRow(1).font = { bold: true };
+      typeMismatchSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
 
-      discrepancyData.discrepancies.forEach(discrepancy => {
-        allDiscrepanciesSheet.addRow(discrepancy);
-      });
+      discrepancyData.discrepancies
+        .filter(d => d.discrepancyType === 'TYPE_MISMATCH')
+        .forEach(d => {
+          typeMismatchSheet.addRow({
+            serialNo: d.serialNo,
+            coachCode: d.coachCode,
+            prsClass: d.prsClass,
+            mdmsClass: d.mdmsClass,
+            berthNumber: d.berthNumber,
+            berthType: d.berthType,
+            berthQualifier: d.berthQualifier,
+            details: d.details
+          });
+        });
 
-      // Create exports directory if it doesn't exist
+      // Sheet: Missing in PRS
+      const missingInPrsSheet = workbook.addWorksheet('Missing in PRS');
+      missingInPrsSheet.columns = [
+        { header: 'Serial No', key: 'serialNo', width: 12 },
+        { header: 'Coach Code', key: 'coachCode', width: 15 },
+        { header: 'MDMS Class', key: 'mdmsClass', width: 12 },
+        { header: 'Berth Number', key: 'berthNumber', width: 12 },
+        { header: 'Berth Qualifier', key: 'berthQualifier', width: 20 },
+        { header: 'Details', key: 'details', width: 60 }
+      ];
+      missingInPrsSheet.getRow(1).font = { bold: true };
+      missingInPrsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+      discrepancyData.discrepancies
+        .filter(d => d.discrepancyType === 'MISSING_IN_PRS')
+        .forEach(d => {
+          missingInPrsSheet.addRow({
+            serialNo: d.serialNo,
+            coachCode: d.coachCode,
+            mdmsClass: d.mdmsClass,
+            berthNumber: d.berthNumber,
+            berthQualifier: d.berthQualifier,
+            details: d.details
+          });
+        });
+
+      // Sheet: Missing in MDMS
+      const missingInMdmsSheet = workbook.addWorksheet('Missing in MDMS');
+      missingInMdmsSheet.columns = [
+        { header: 'Serial No', key: 'serialNo', width: 12 },
+        { header: 'Coach Code', key: 'coachCode', width: 15 },
+        { header: 'PRS Class', key: 'prsClass', width: 12 },
+        { header: 'Berth Number', key: 'berthNumber', width: 12 },
+        { header: 'Berth Type', key: 'berthType', width: 15 },
+        { header: 'Details', key: 'details', width: 60 }
+      ];
+      missingInMdmsSheet.getRow(1).font = { bold: true };
+      missingInMdmsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+      discrepancyData.discrepancies
+        .filter(d => d.discrepancyType === 'MISSING_IN_MDMS')
+        .forEach(d => {
+          missingInMdmsSheet.addRow({
+            serialNo: d.serialNo,
+            coachCode: d.coachCode,
+            prsClass: d.prsClass,
+            berthNumber: d.berthNumber,
+            berthType: d.berthType,
+            details: d.details
+          });
+        });
+
+      // Create exports dir if needed
       const exportsDir = path.join(process.cwd(), 'exports');
-      if (!fs.existsSync(exportsDir)) {
-        fs.mkdirSync(exportsDir, { recursive: true });
-      }
+      if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
 
-      // Save file in exports directory
-       const now = new Date();
+      // Timestamped filename
+      const now = new Date();
+      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
 
-      const localTimestamp =
-        now.getFullYear() +
-        '-' + String(now.getMonth() + 1).padStart(2, '0') +
-        '-' + String(now.getDate()).padStart(2, '0') +
-        '_' + String(now.getHours()).padStart(2, '0') +
-        '-' + String(now.getMinutes()).padStart(2, '0') +
-        '-' + String(now.getSeconds()).padStart(2, '0');
-
-      const fileName = `prs-mdms-discrepancy-report-${localTimestamp}.xlsx`;
+      const fileName = `prs-mdms-discrepancy-report-${timestamp}.xlsx`;
       const filePath = path.join(exportsDir, fileName);
 
       await workbook.xlsx.writeFile(filePath);
@@ -299,11 +549,154 @@ export class DiscrepancyService {
 export class DuplicateService {
 
   /**
+ * Generate SQL files for all duplicate types
+ */
+  async generateDuplicateSQL() {
+    try {
+      console.log('📝 Generating SQL files for duplicates...');
+
+      const sqlQueries = {
+        prsDuplicates: `
+-- PRS Internal Duplicates
+-- Records that appear multiple times within the PRS table
+SELECT 
+  coach_code,
+  class,
+  berth_number,
+  berth_type,
+  COUNT(*) as duplicate_count,
+  ARRAY_AGG(serial_no ORDER BY serial_no) as serial_numbers,
+  'WITHIN_PRS' as duplicate_type,
+  CONCAT('Coach ', coach_code, ', Class ', class, ', Berth ', berth_number, ' appears ', COUNT(*), ' times in PRS') as details
+FROM prs
+GROUP BY coach_code, class, berth_number, berth_type
+HAVING COUNT(*) > 1
+ORDER BY coach_code, berth_number;
+`,
+
+        mdmsDuplicates: `
+-- MDMS Internal Duplicates
+-- Records that appear multiple times within the MDMS table
+SELECT 
+  prs_coach_code,
+  coach_class,
+  berth_no,
+  berth_qualifier,
+  COUNT(*) as duplicate_count,
+  ARRAY_AGG(serial_no ORDER BY serial_no) as serial_numbers,
+  'WITHIN_MDMS' as duplicate_type,
+  CONCAT('Coach ', prs_coach_code, ', Class ', coach_class, ', Berth ', berth_no, ' appears ', COUNT(*), ' times in MDMS') as details
+FROM mdms
+GROUP BY prs_coach_code, coach_class, berth_no, berth_qualifier
+HAVING COUNT(*) > 1
+ORDER BY prs_coach_code, berth_no;
+`,
+
+        crossTableDuplicates: `
+-- Cross-Table Duplicates
+-- Records that appear multiple times across both PRS and MDMS tables
+SELECT 
+  p.coach_code,
+  p.class,
+  p.berth_number,
+  p.berth_type,
+  m.berth_qualifier,
+  COUNT(DISTINCT p.serial_no) as prs_count,
+  COUNT(DISTINCT m.serial_no) as mdms_count,
+  ARRAY_AGG(DISTINCT p.serial_no ORDER BY p.serial_no) as prs_serial_numbers,
+  ARRAY_AGG(DISTINCT m.serial_no ORDER BY m.serial_no) as mdms_serial_numbers,
+  'CROSS_TABLE' as duplicate_type,
+  CONCAT('Coach ', p.coach_code, ', Class ', p.class, ', Berth ', p.berth_number, ' has ', COUNT(DISTINCT p.serial_no), ' entries in PRS and ', COUNT(DISTINCT m.serial_no), ' entries in MDMS') as details
+FROM prs p
+FULL OUTER JOIN mdms m 
+  ON TRIM(LOWER(p.coach_code)) = TRIM(LOWER(m.prs_coach_code))
+  AND TRIM(LOWER(p.class)) = TRIM(LOWER(m.coach_class))
+  AND p.berth_number::INT = m.berth_no
+GROUP BY p.coach_code, p.class, p.berth_number, p.berth_type, m.berth_qualifier
+HAVING COUNT(DISTINCT p.serial_no) > 1 OR COUNT(DISTINCT m.serial_no) > 1
+ORDER BY (COUNT(DISTINCT p.serial_no) + COUNT(DISTINCT m.serial_no)) DESC;
+`,
+
+        allDuplicates: `
+-- All Duplicates Combined
+-- Summary of all duplicate types
+WITH prs_duplicates AS (
+  SELECT 
+    coach_code,
+    class,
+    berth_number,
+    berth_type,
+    COUNT(*) as duplicate_count,
+    'WITHIN_PRS' as duplicate_type,
+    CONCAT('Coach ', coach_code, ', Class ', class, ', Berth ', berth_number, ' appears ', COUNT(*), ' times in PRS') as details
+  FROM prs
+  GROUP BY coach_code, class, berth_number, berth_type
+  HAVING COUNT(*) > 1
+),
+mdms_duplicates AS (
+  SELECT 
+    prs_coach_code as coach_code,
+    coach_class as class,
+    berth_no as berth_number,
+    berth_qualifier as berth_type,
+    COUNT(*) as duplicate_count,
+    'WITHIN_MDMS' as duplicate_type,
+    CONCAT('Coach ', prs_coach_code, ', Class ', coach_class, ', Berth ', berth_no, ' appears ', COUNT(*), ' times in MDMS') as details
+  FROM mdms
+  GROUP BY prs_coach_code, coach_class, berth_no, berth_qualifier
+  HAVING COUNT(*) > 1
+)
+SELECT * FROM prs_duplicates
+UNION ALL
+SELECT * FROM mdms_duplicates
+ORDER BY duplicate_type, coach_code, berth_number;
+`
+      };
+
+      const sqlDir = path.join(process.cwd(), 'sql_exports');
+      if (!fs.existsSync(sqlDir)) {
+        fs.mkdirSync(sqlDir, { recursive: true });
+      }
+
+      const timestamp = this.getTimestamp();
+      const sqlFiles = [];
+
+      for (const [type, sqlQuery] of Object.entries(sqlQueries)) {
+        const fileName = `duplicate_${type}_${timestamp}.sql`;
+        const filePath = path.join(sqlDir, fileName);
+
+        fs.writeFileSync(filePath, sqlQuery.trim());
+        sqlFiles.push(fileName);
+        console.log(`✅ Created SQL file: ${fileName}`);
+      }
+
+      return sqlFiles;
+
+    } catch (error) {
+      console.error('Error generating duplicate SQL files:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate timestamp for file naming
+   */
+  getTimestamp() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+  }
+
+
+  /**
    * Find all duplicate entries in PRS and MDMS tables
    */
   async findDuplicates() {
     try {
       console.log('🔍 Starting duplicate analysis...');
+
+      // Generate SQL files first
+      await this.generateDuplicateSQL();
+
       const duplicates = {
         prs: [],
         mdms: [],
@@ -382,18 +775,18 @@ export class DuplicateService {
           p.berth_number,
           p.berth_type,
           m.berth_qualifier,
-          COUNT(p.serial_no) as prs_count,
-          COUNT(m.serial_no) as mdms_count,
+          COUNT(DISTINCT p.serial_no) as prs_count,
+          COUNT(DISTINCT m.serial_no) as mdms_count,
           ARRAY_AGG(DISTINCT p.serial_no ORDER BY p.serial_no) as prs_serial_numbers,
           ARRAY_AGG(DISTINCT m.serial_no ORDER BY m.serial_no) as mdms_serial_numbers
         FROM prs p
-        INNER JOIN mdms m 
+        FULL OUTER JOIN mdms m 
           ON TRIM(LOWER(p.coach_code)) = TRIM(LOWER(m.prs_coach_code))
           AND TRIM(LOWER(p.class)) = TRIM(LOWER(m.coach_class))
           AND p.berth_number::INT = m.berth_no
         GROUP BY p.coach_code, p.class, p.berth_number, p.berth_type, m.berth_qualifier
-        HAVING COUNT(p.serial_no) > 1 OR COUNT(m.serial_no) > 1
-        ORDER BY (COUNT(p.serial_no) + COUNT(m.serial_no)) DESC
+        HAVING COUNT(DISTINCT p.serial_no) > 1 OR COUNT(DISTINCT m.serial_no) > 1
+        ORDER BY (COUNT(DISTINCT p.serial_no) + COUNT(DISTINCT m.serial_no)) DESC
       `;
 
       const crossTableDuplicatesResult = await query(crossTableDuplicatesQuery);
@@ -682,7 +1075,7 @@ export class DuplicateService {
         '-' + String(now.getMinutes()).padStart(2, '0') +
         '-' + String(now.getSeconds()).padStart(2, '0');
 
-      const fileName = `prs-mdms-discrepancy-report-${localTimestamp}.xlsx`;
+      const fileName = `prs-mdms-duplicates-report-${localTimestamp}.xlsx`;
       const filePath = path.join(exportsDir, fileName);
 
       await workbook.xlsx.writeFile(filePath);

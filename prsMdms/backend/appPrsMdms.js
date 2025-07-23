@@ -2,8 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { initDb } from '../database/config/db.js';
+import { SmartSeeder } from './services/smartSeeder.js';
 import discrepancyRoutes from './routes/prsMdmsDiscrepancyRoutes.js';
 import duplicateRoutes from './routes/prsMdmsDuplicateRoutes.js';
+import smartSeederRoutes from './routes/smartSeederRoutes.js';
+import { setSmartSeederInstance } from './controllers/prsMdmsController.js';
 
 // Load environment variables
 dotenv.config();
@@ -16,21 +19,33 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Initialize smart seeder with corrected path
+const smartSeeder = new SmartSeeder({
+  watchDirectory: './database/excel', // Fixed to match your actual file location
+  seederPath: 'database/ingestion/prsMdmsDataSeeder.js',
+  filePattern: /\.(xlsx|xls)$/i,
+  debounceTime: 3000
+});
+
 // Routes
 app.use('/api/discrepancies', discrepancyRoutes);
 app.use('/api/duplicates', duplicateRoutes);
+app.use('/api/seeder', smartSeederRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'PRS vs MDMS Analysis API is running',
-    version: '2.0.0',
+  res.json({
+    status: 'OK',
+    message: 'PRS vs MDMS Analysis API with Smart Seeder is running',
+    version: '4.0.0',
     features: [
+      'Smart File Watching',
+      'Automatic Whitespace Cleanup',
+      'Intelligent Seeding',
       'Discrepancy Detection',
-      'Duplicate Analysis', 
+      'Duplicate Analysis',
       'Excel Export',
-      'Data Simulation'
+      'Manual Seeder Control'
     ],
     timestamp: new Date().toISOString()
   });
@@ -41,11 +56,21 @@ app.get('/api', (req, res) => {
   res.json({
     success: true,
     message: 'PRS vs MDMS Analysis API Documentation',
-    version: '2.0.0',
+    version: '4.0.0',
     baseUrl: `http://localhost:${PORT}`,
     endpoints: {
       health: 'GET /health',
       documentation: 'GET /api',
+      smartSeeder: {
+        main: 'GET /api/seeder/',
+        status: 'GET /api/seeder/status',
+        config: 'GET /api/seeder/config',
+        history: 'GET /api/seeder/history',
+        forceSeeding: 'POST /api/seeder/force',
+        resetHashes: 'POST /api/seeder/reset',
+        stop: 'POST /api/seeder/stop',
+        start: 'POST /api/seeder/start'
+      },
       discrepancies: {
         main: 'GET /api/discrepancies/',
         summary: 'GET /api/discrepancies/summary',
@@ -54,7 +79,7 @@ app.get('/api', (req, res) => {
         byType: 'GET /api/discrepancies/type/{TYPE_MISMATCH|MISSING_IN_PRS|MISSING_IN_MDMS}',
         byCoach: 'GET /api/discrepancies/coach/{coachCode}',
         export: 'GET /api/discrepancies/export/excel?detailed=true',
-        download: `GET /api/discrepancies/download/${fileName}`,
+        download: 'GET /api/discrepancies/download/{fileName}',
         simulate: 'POST /api/discrepancies/simulate',
         restore: 'POST /api/discrepancies/restore'
       },
@@ -68,12 +93,6 @@ app.get('/api', (req, res) => {
         export: 'GET /api/duplicates/export/excel',
         download: 'GET /api/duplicates/download/{fileName}'
       }
-    },
-    examples: {
-      getDiscrepancySummary: `curl ${req.protocol}://${req.get('host')}/api/discrepancies/summary`,
-      getDuplicateSummary: `curl ${req.protocol}://${req.get('host')}/api/duplicates/summary`,
-      exportDiscrepancies: `curl ${req.protocol}://${req.get('host')}/api/discrepancies/export/excel`,
-      exportDuplicates: `curl ${req.protocol}://${req.get('host')}/api/duplicates/export/excel`
     }
   });
 });
@@ -89,7 +108,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
+// 404 handler - Fixed the route pattern
 app.use('*checkall', (req, res) => {
   res.status(404).json({
     success: false,
@@ -98,6 +117,7 @@ app.use('*checkall', (req, res) => {
     availableRoutes: [
       '/health',
       '/api',
+      '/api/seeder/*',
       '/api/discrepancies/*',
       '/api/duplicates/*'
     ],
@@ -105,26 +125,45 @@ app.use('*checkall', (req, res) => {
   });
 });
 
-// ✅ INITIALIZE DATABASE BEFORE STARTING SERVER
+// Initialize application
 (async () => {
   try {
     console.log('🔧 Initializing database...');
     await initDb();
     console.log('✅ Database initialized successfully');
     
-    // Start server only after database is initialized
+    console.log('🤖 Initializing smart seeder...');
+    await smartSeeder.initialize();
+    console.log('✅ Smart seeder initialized successfully');
+    
+    // Set the smart seeder instance for the controller
+    setSmartSeederInstance(smartSeeder);
+    
+    // Start server
     app.listen(PORT, () => {
       console.log(`🚀 PRS vs MDMS Analysis API running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      console.log(`🤖 Smart Seeder API: http://localhost:${PORT}/api/seeder/`);
       console.log(`📚 API documentation: http://localhost:${PORT}/api`);
-      console.log(`🔍 Discrepancy endpoints: http://localhost:${PORT}/api/discrepancies/`);
-      console.log(`🔄 Duplicate endpoints: http://localhost:${PORT}/api/duplicates/`);
-      console.log('');
+      console.log(`👁️ Smart seeder monitoring: ${smartSeeder.config.watchDirectory}`);
+      console.log(`🔍 Watching for changes in: ${smartSeeder.config.watchDirectory}`);
+    });
+    
+    // Graceful shutdown
+    process.on('SIGINT', async () => {
+      console.log('🔄 Shutting down gracefully...');
+      smartSeeder.stop();
+      process.exit(0);
+    });
+    
+    process.on('SIGTERM', async () => {
+      console.log('🔄 Received SIGTERM, shutting down gracefully...');
+      smartSeeder.stop();
+      process.exit(0);
     });
     
   } catch (error) {
-    console.error('❌ Failed to initialize database:', error);
-    console.error('💡 Make sure PostgreSQL is running and your .env file has correct database credentials');
+    console.error('❌ Failed to initialize application:', error);
     process.exit(1);
   }
 })();

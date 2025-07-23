@@ -19,7 +19,7 @@ console.log(__dirname);
     
     // Use relative path from project root or make it configurable
     const filePath = process.env.EXCEL_FILE_PATH || 
-                    path.join(__dirname, '../excel/MDMS_PRS_Differences_BerthQualifier.xlsx');
+                    path.resolve(process.cwd(), 'database/excel/MDMS_PRS_Differences_BerthQualifier.xlsx');;
     
     // Check if file exists before proceeding
     if (!fs.existsSync(filePath)) {

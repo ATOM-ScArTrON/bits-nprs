@@ -18,3 +18,7 @@ npm-debug.log*
 
 # Exports
 exports/
+sql_exports/
+
+#Hash
+.file_hashes.json

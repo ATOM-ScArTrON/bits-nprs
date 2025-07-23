@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "node database/ingestion/prsMdmsDataSeeder.js",
     "start": "node backend/appPrsMdms.js",
-    "dev": "nodemon backend/appPrsMdms.js"
+    "dev": "nodemon backend/appPrsMdms.js",
+    "clean-db": "node -e \"import('./database/config/db.js').then(db => db.query('DELETE FROM prs; DELETE FROM mdms;'))\""
   },
   "repository": {
     "type": "git",
