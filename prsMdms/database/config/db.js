@@ -8,48 +8,57 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-console.log
-
 let localPool, remotePool = null;
+const target = process.env.DB_TARGET || 'local' //Remote or Local Target Server
+
+console.log(`🌐 Target database: ${target}`)
 
 // Initialize PostgreSQL connection
-export async function initDb(target = 'local') {
+export async function initDb() {
   try {
     // Create localhost connection pool
-    localPool = new Pool({
-      user: process.env.LOCAL_DB_USER || 'postgres',
-      host: process.env.LOCAL_DB_HOST || 'localhost',
-      database: process.env.LOCAL_DB_NAME || 'prs_mdms_db',
-      password: process.env.LOCAL_DB_PASSWORD || 'password',
-      port: process.env.LOCAL_DB_PORT || 5432,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
-    });
-    
-    // Test localhost connection
-    const localClient = await localPool.connect();
-    console.log('✅ Local DB PostgreSQL connection established');
-    localClient.release();
+    if (target === 'localhost') {
+      localPool = new Pool({
 
-    // Create remote connection pool
-    remotePool = new Pool({
-      user: process.env.REMOTE_DB_USER,
-      host: process.env.REMOTE_DB_HOST,
-      database: process.env.REMOTE_DB_NAME,
-      password: process.env.REMOTE_DB_PASSWORD,
-      port: process.env.REMOTE_DB_PORT,
-      ssl: true,
-    });
+        user: process.env.LOCAL_DB_USER || 'postgres',
+        host: process.env.LOCAL_DB_HOST || 'localhost',
+        database: process.env.LOCAL_DB_NAME || 'prs_mdms_db',
+        password: process.env.LOCAL_DB_PASSWORD || 'password',
+        port: process.env.LOCAL_DB_PORT || 5432,
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 2000,
+      });
 
-    // Test remote connection
-    const remoteClient = await remotePool.connect();
-    console.log('✅ Remote DB PostgreSQL connection established');
-    remoteClient.release();
-    
+      // Test localhost connection
+      const localClient = await localPool.connect();
+      console.log('✅ Local DB PostgreSQL connection established');
+      localClient.release();
+    } else if (target === 'remote') {
+
+      // Create remote connection pool
+      remotePool = new Pool({
+        user: process.env.REMOTE_DB_USER,
+        host: process.env.REMOTE_DB_HOST,
+        database: process.env.REMOTE_DB_NAME,
+        password: process.env.REMOTE_DB_PASSWORD,
+        port: process.env.REMOTE_DB_PORT,
+        ssl: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      // Test remote connection
+      const remoteClient = await remotePool.connect();
+      console.log('✅ Remote DB PostgreSQL connection established');
+      remoteClient.release();
+    } else {
+      console.log('❌ Target Server is not specified correctly');
+    }
+
     // Create tables using your SQL schema
     await createTables(localPool);
-    
+
     return { localPool, remotePool };
   } catch (error) {
     console.error('❌ Database initialization failed:', error);
@@ -61,25 +70,25 @@ export async function initDb(target = 'local') {
 async function createTables(pool) {
   try {
     const schemaPath = path.join(__dirname, '../prsMdms.sql');
-    
+
     if (!fs.existsSync(schemaPath)) {
       throw new Error(`SQL schema file not found: ${schemaPath}`);
     }
-    
+
     console.log('📄 Reading SQL schema file:', schemaPath);
     const sqlContent = fs.readFileSync(schemaPath, 'utf8');
-    
+
     // Split SQL statements (in case there are multiple)
     const statements = sqlContent
       .split(';')
       .map(stmt => stmt.trim())
       .filter(stmt => stmt.length > 0);
-    
+
     console.log('🔧 Executing SQL schema...');
     for (const statement of statements) {
       await pool.query(statement);
     }
-    
+
     console.log('✅ Database tables created/verified using SQL schema');
   } catch (error) {
     console.error('❌ Table creation failed:', error);
@@ -88,12 +97,12 @@ async function createTables(pool) {
 }
 
 // Query function to execute SQL with parameters
-export async function query(text, params = [], target = 'local') {
+export async function query(text, params = []) {
   const pool = target === 'remote' ? remotePool : localPool;
   if (!pool) {
     throw new Error(`${target} Database not initialized`);
   }
-  
+
   try {
     const result = await pool.query(text, params);
     return result;
@@ -106,8 +115,8 @@ export async function query(text, params = [], target = 'local') {
 }
 
 // Get pool instance
-export function getPool(target = 'local') {
-  const pool = target === 'remote' ? remotePool : localPool; 
+export function getPool() {
+  const pool = target === 'remote' ? remotePool : localPool;
   if (!pool) {
     throw new Error(`${target} database not initialized`);
   }
