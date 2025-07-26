@@ -20,6 +20,9 @@ export async function initDb() {
       database: process.env.DB_NAME || 'prs_mdms_db',
       password: process.env.DB_PASSWORD || 'password',
       port: process.env.DB_PORT || 5432,
+      ssl: {
+        rejectUnauthorized: false,
+      },
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,

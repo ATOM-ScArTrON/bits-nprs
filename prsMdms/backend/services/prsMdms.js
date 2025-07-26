@@ -739,13 +739,13 @@ ORDER BY duplicate_type, coach_code, berth_number;
       const mdmsDuplicatesQuery = `
         SELECT 
           prs_coach_code,
-          layout_variant_no,
+          coach_class,
           berth_no,
           berth_qualifier,
           COUNT(*) as duplicate_count,
           ARRAY_AGG(serial_no ORDER BY serial_no) as serial_numbers
         FROM mdms
-        GROUP BY prs_coach_code, layout_variant_no, berth_no, berth_qualifier
+        GROUP BY prs_coach_code, coach_class, berth_no, berth_qualifier
         HAVING COUNT(*) > 1
         ORDER BY prs_coach_code, berth_no
       `;
@@ -756,14 +756,14 @@ ORDER BY duplicate_type, coach_code, berth_number;
       for (const row of mdmsDuplicatesResult.rows) {
         duplicates.mdms.push({
           coachCode: row.prs_coach_code,
-          layoutVariantNo: row.layout_variant_no,
+          coachClass: row.coach_class,
           berthNumber: row.berth_no,
           berthQualifier: row.berth_qualifier,
           duplicateCount: parseInt(row.duplicate_count),
           serialNumbers: row.serial_numbers,
           table: 'MDMS',
           duplicateType: 'WITHIN_MDMS',
-          details: `Coach ${row.prs_coach_code}, Class ${row.layout_variant_no}, Berth ${row.berth_no} appears ${row.duplicate_count} times in MDMS`
+          details: `Coach ${row.prs_coach_code}, Class ${row.coach_class}, Berth ${row.berth_no} appears ${row.duplicate_count} times in MDMS`
         });
       }
 
@@ -998,7 +998,7 @@ ORDER BY duplicate_type, coach_code, berth_number;
         const mdmsSheet = workbook.addWorksheet('MDMS Duplicates');
         mdmsSheet.columns = [
           { header: 'Coach Code', key: 'coachCode', width: 15 },
-          { header: 'Class', key: 'layoutVariantNo', width: 30 },
+          { header: 'Class', key: 'coachClass', width: 30 },
           { header: 'Berth Number', key: 'berthNumber', width: 12 },
           { header: 'Berth Qualifier', key: 'berthQualifier', width: 15 },
           { header: 'Duplicate Count', key: 'duplicateCount', width: 15 },
@@ -1016,7 +1016,7 @@ ORDER BY duplicate_type, coach_code, berth_number;
         duplicateData.duplicates.mdms.forEach(duplicate => {
           mdmsSheet.addRow({
             coachCode: duplicate.coachCode,
-            layoutVariantNo: duplicate.layoutVariantNo,
+            coachClass: duplicate.coachClass,
             berthNumber: duplicate.berthNumber,
             berthQualifier: duplicate.berthQualifier,
             duplicateCount: duplicate.duplicateCount,

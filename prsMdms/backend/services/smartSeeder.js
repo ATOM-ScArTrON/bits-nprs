@@ -38,10 +38,15 @@ export class SmartSeeder {
             await this.loadFileHashes();
 
             // Check for changes in existing files
-            const hasChanges = await this.checkForChanges();
+            const { fileChanged, dbEmpty } = await this.checkForChanges();
 
-            if (hasChanges) {
-                console.log('🔄 Changes detected in Excel files, seeding with whitespace cleanup...');
+            if (fileChanged || dbEmpty) {
+                if (dbEmpty && !fileChanged) {
+                    console.log('📉 Database was empty — seeding triggered');
+                }
+                else {
+                    console.log('🔄 Changes detected in Excel files, seeding with whitespace cleanup...')
+                }
                 await this.seedWithWhitespaceCleanup();
             } else {
                 console.log('✅ No changes detected, skipping seeding');
@@ -115,6 +120,7 @@ export class SmartSeeder {
         }
 
         let hasChanges = false;
+        let dbNeedsSeeding = false;
 
         for (const filePath of files) {
             const currentHash = this.calculateFileHash(filePath);
@@ -125,6 +131,26 @@ export class SmartSeeder {
                 this.fileHashes[filePath] = currentHash;
                 hasChanges = true;
             }
+        }
+
+        // Check if PRS and MDMS tables are empty
+        try {
+            const prsResult = await query('SELECT COUNT(*) FROM prs');
+            const mdmsResult = await query('SELECT COUNT(*) FROM mdms');
+
+            const prsCount = parseInt(prsResult.rows[0].count);
+            const mdmsCount = parseInt(mdmsResult.rows[0].count);
+
+            if (prsCount === 0 || mdmsCount === 0) {
+                console.log('📉 Database is empty, forcing seed');
+                hasChanges = true;
+                dbNeedsSeeding = true;
+            }
+        } catch (error) {
+            console.error('❌ Error checking DB contents for seeding:', error);
+            // Optional: fallback to seeding if DB check fails
+            hasChanges = true;
+            dbNeedsSeeding = true;
         }
 
         // Check for deleted files
@@ -140,8 +166,11 @@ export class SmartSeeder {
             await this.saveFileHashes();
         }
 
-        return hasChanges;
-    }
+        return {
+            fileChanged: hasChanges && !dbNeedsSeeding,
+            dbEmpty: dbNeedsSeeding
+        }
+    };
 
     startWatching() {
         const watchDir = this.config.watchDirectory;
