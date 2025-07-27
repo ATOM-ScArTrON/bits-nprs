@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS prs (
   id SERIAL PRIMARY KEY,
-  serial_no INT,
+  serial_no INT UNIQUE,
   coach_code TEXT,
   composite_flag BOOLEAN,
   class TEXT,
@@ -8,10 +8,9 @@ CREATE TABLE IF NOT EXISTS prs (
   berth_type TEXT
 );
 
-
 CREATE TABLE IF NOT EXISTS mdms (
   id SERIAL PRIMARY KEY,
-  serial_no INT,
+  serial_no INT UNIQUE,
   layout_variant_no TEXT,
   composite_flag BOOLEAN,
   coach_class_first TEXT,
@@ -21,3 +20,7 @@ CREATE TABLE IF NOT EXISTS mdms (
   berth_no INT,
   berth_qualifier TEXT
 );
+
+-- Recommended constraints
+CREATE INDEX IF NOT EXISTS idx_prs_serial ON prs(serial_no);
+CREATE INDEX IF NOT EXISTS idx_mdms_serial ON mdms(serial_no);

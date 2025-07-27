@@ -59,16 +59,16 @@ export async function initDb() {
     // Determine target pool for DDL operations
     const targetPool = target === 'remote' ? remotePool : localPool;
 
-    if (target === 'local' && allowDDL) {
-      console.log('🔧 Table creation enabled via environment flag'); // Local table creation using your SQL schema
-      await createTables(targetPool);
-    } else if (target === 'remote') {
-      console.log('⚠️ Production mode: Verifying tables exist (no creation)'); // Verification of tables on the remote server
-      await verifyTablesExist(targetPool);
-    } else {
-      console.log('⚠️ Table creation DISABLED on this run'); // Disable automatic table creation on unless allowed
-      await verifyTablesExist(targetPool);
-    }
+    // if (allowDDL) {
+    //   console.log('🔧 Table creation enabled via environment flag'); // Local table creation using your SQL schema
+    //   await createTables(targetPool);
+    // } else if (target === 'remote') {
+    //   console.log('⚠️ Production mode: Verifying tables exist (no creation)'); // Verification of tables on the remote server
+    //   await verifyTablesExist(targetPool);
+    // } else {
+    //   console.log('⚠️ Table creation DISABLED on this run'); // Disable automatic table creation on remote server unless allowed
+    //   await verifyTablesExist(targetPool);
+    // }
 
     return { localPool, remotePool };
   } catch (error) {

@@ -2,6 +2,11 @@ import { query } from '../../database/config/db.js';
 import ExcelJS from 'exceljs';
 import path from 'path';
 import fs from 'fs';
+import dotenv from 'dotenv';
+dotenv.config();
+
+const target = process.env.DB_TARGET;
+const allowDDL = process.env.ALLOW_TABLE_CREATION;
 
 export class DiscrepancyService {
 
@@ -9,9 +14,20 @@ export class DiscrepancyService {
    * Generate SQL files for all discrepancy types
    */
   async generateDiscrepancySQL() {
+
+    // if (target === 'remote') {
+    //   console.log('⚠️ SQL file generation disabled on remote server');
+    //   return []; // Return empty array instead of generating files
+    // }
+
+    if (!allowDDL) {
+      console.log('⚠️ SQL file generation disabled (ALLOW_TABLE_CREATION=false)');
+      return [];
+    }
+
     try {
       console.log('📝 Generating SQL files for discrepancies...');
-
+      
       const sqlQueries = {
         typeMismatch: `
 -- Type Mismatch Discrepancies
@@ -185,7 +201,11 @@ ORDER BY discrepancy_type, coach_code, berth_number;
       console.log('🔍 Starting improved discrepancy analysis...');
 
       // Generate SQL files first
-      await this.generateDiscrepancySQL();
+      if (target === 'local' && allowTableCreation) {
+        await this.generateDiscrepancySQL();
+      } else {
+        console.log('⚠️ SQL file generation skipped for remote/production environment');
+      }
 
       const discrepancies = [];
 
@@ -552,6 +572,17 @@ export class DuplicateService {
  * Generate SQL files for all duplicate types
  */
   async generateDuplicateSQL() {
+
+//  if (target === 'remote') {
+//       console.log('⚠️ SQL file generation disabled on remote server');
+//       return [];
+//     }
+    
+    if (!allowTableCreation) {
+      console.log('⚠️ SQL file generation disabled (ALLOW_TABLE_CREATION=false)');
+      return [];
+    }
+
     try {
       console.log('📝 Generating SQL files for duplicates...');
 

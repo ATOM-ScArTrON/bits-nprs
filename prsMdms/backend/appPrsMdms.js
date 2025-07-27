@@ -1,8 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { initDb } from '../database/config/db.js';
 import { SmartSeeder } from './services/smartSeeder.js';
+import { query } from '../database/config/db.js';
 import discrepancyRoutes from './routes/prsMdmsDiscrepancyRoutes.js';
 import duplicateRoutes from './routes/prsMdmsDuplicateRoutes.js';
 import smartSeederRoutes from './routes/smartSeederRoutes.js';
@@ -131,14 +134,16 @@ app.use('*checkall', (req, res) => {
     console.log('🔧 Initializing database...');
     await initDb();
     console.log('✅ Database initialized successfully');
-    
+    const schemaSQL = fs.readFileSync(path.join(process.cwd(), 'database/prsMdms.sql'), 'utf8');
+    await query(schemaSQL);
+
     console.log('🤖 Initializing smart seeder...');
     await smartSeeder.initialize();
     console.log('✅ Smart seeder initialized successfully');
-    
+
     // Set the smart seeder instance for the controller
     setSmartSeederInstance(smartSeeder);
-    
+
     // Start server
     app.listen(PORT, () => {
       console.log(`🚀 PRS vs MDMS Analysis API running on port ${PORT}`);
@@ -148,20 +153,20 @@ app.use('*checkall', (req, res) => {
       console.log(`👁️ Smart seeder monitoring: ${smartSeeder.config.watchDirectory}`);
       console.log(`🔍 Watching for changes in: ${smartSeeder.config.watchDirectory}`);
     });
-    
+
     // Graceful shutdown
     process.on('SIGINT', async () => {
       console.log('🔄 Shutting down gracefully...');
       smartSeeder.stop();
       process.exit(0);
     });
-    
+
     process.on('SIGTERM', async () => {
       console.log('🔄 Received SIGTERM, shutting down gracefully...');
       smartSeeder.stop();
       process.exit(0);
     });
-    
+
   } catch (error) {
     console.error('❌ Failed to initialize application:', error);
     process.exit(1);

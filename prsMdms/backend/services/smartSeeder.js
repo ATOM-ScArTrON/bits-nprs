@@ -39,24 +39,33 @@ export class SmartSeeder {
 
             // Check for changes in existing files
             const { fileChanged, dbEmpty } = await this.checkForChanges();
+            const target = process.env.DB_TARGET;
+            const allowDDL = process.env.ALLOW_TABLE_CREATION;
 
-            if (fileChanged || dbEmpty) {
-                if (dbEmpty && !fileChanged) {
-                    console.log('📉 Database was empty — seeding triggered');
+            if (target === 'local' && allowDDL) {
+                if (fileChanged || dbEmpty) {
+                    if (dbEmpty && !fileChanged) {
+                        console.log('📉 Database was empty — seeding triggered');
+                    }
+                    else {
+                        console.log('🔄 Changes detected in Excel files, seeding with whitespace cleanup...')
+                    }
+                    await this.seedWithWhitespaceCleanup();
+                } else {
+                    console.log('✅ No changes detected, skipping seeding');
                 }
-                else {
-                    console.log('🔄 Changes detected in Excel files, seeding with whitespace cleanup...')
-                }
-                await this.seedWithWhitespaceCleanup();
+
+                // Start watching for new changes
+                this.startWatching();
+
+                console.log(`👁️ Smart seeder initialized, watching: ${this.config.watchDirectory}`);
+                return true;
+            } else if (target === 'remote') {
+                console.log('⚠️ Production mode: Seeding disabled for remote database');
+                console.log('💡 Ensure tables and data are pre-loaded by database administrators');
             } else {
-                console.log('✅ No changes detected, skipping seeding');
+                console.log('⚠️ Seeding disabled: ALLOW_TABLE_CREATION=false');
             }
-
-            // Start watching for new changes
-            this.startWatching();
-
-            console.log(`👁️ Smart seeder initialized, watching: ${this.config.watchDirectory}`);
-            return true;
         } catch (error) {
             console.error('❌ Error initializing smart seeder:', error);
             throw error;

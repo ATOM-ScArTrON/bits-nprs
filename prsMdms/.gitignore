@@ -22,3 +22,6 @@ sql_exports/
 
 #Hash
 .file_hashes.json
+
+#Docker
+docker/

@@ -1,0 +1,17 @@
+version: '4.43.2'
+services:
+  railways-postgres:
+    image: postgres:17
+    container_name: railways-mock-server
+    environment:
+      POSTGRES_DB: railways_production
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin_secure_pass
+    ports:
+      - "5434:5432"  # Maps to your REMOTE_DB_PORT
+    volumes:
+      - ./init-db:/docker-entrypoint-initdb.d
+      - railways_data:/var/lib/postgresql/data
+
+volumes:
+  railways_data:
